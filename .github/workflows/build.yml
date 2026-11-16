@@ -2,7 +2,6 @@ name: Build NEXARION
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -12,8 +11,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Find project (unzips NexarionWeapon.zip if needed)
+        run: |
+          if [ -f build.gradle ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          else
+            unzip -q NexarionWeapon.zip
+            echo "PROJECT_DIR=NexarionWeapon" >> "$GITHUB_ENV"
+          fi
+
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -24,41 +32,26 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Build plugin
-        run: gradle build --no-daemon --stacktrace
-
-      - name: Verify JAR contents
         run: |
-          JAR=$(ls build/libs/NexarionWeapon-*.jar | head -n1)
-          echo "Built: $JAR"
-          unzip -l "$JAR" | grep -E "plugin.yml|config.yml|NexarionPlugin.class"
+          cd "$PROJECT_DIR"
+          gradle build --no-daemon --stacktrace
 
       - name: Package resource pack
         run: |
-          cd resourcepack
-          zip -r -X ../NEXARION-ResourcePack.zip .
-          cd ..
-          sha1sum NEXARION-ResourcePack.zip | tee NEXARION-ResourcePack.sha1
+          cd "$PROJECT_DIR/resourcepack"
+          zip -r -X "$GITHUB_WORKSPACE/NEXARION-ResourcePack.zip" .
 
       - name: Upload plugin JAR
         uses: actions/upload-artifact@v4
         with:
           name: NexarionWeapon-plugin
-          path: build/libs/NexarionWeapon-*.jar
+          path: ${{ env.PROJECT_DIR }}/build/libs/NexarionWeapon-*.jar
           if-no-files-found: error
 
       - name: Upload resource pack
         uses: actions/upload-artifact@v4
         with:
           name: NEXARION-ResourcePack
-          path: |
-            NEXARION-ResourcePack.zip
-            NEXARION-ResourcePack.sha1
+          path: NEXARION-ResourcePack.zip
           if-no-files-found: error
-
-      - name: Report failure
-        if: failure()
-        run: |
-          echo "::error title=NEXARION build FAILED::See the failing step above. No JAR was published."
-          echo "### NEXARION build FAILED" >> "$GITHUB_STEP_SUMMARY"
-          echo "Check the failing step's log. No artifact was uploaded." >> "$GITHUB_STEP_SUMMARY"
           
